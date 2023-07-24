@@ -1,2 +1,2 @@
 # ApproxML
-Fitness Approximation through Machine Learning
+Code for the paper Fitness Approximation through Machine Learning.
