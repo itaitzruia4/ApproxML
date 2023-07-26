@@ -138,9 +138,6 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         # how to handle duplicate individuals in the dataset
         self.handle_duplicates = handle_duplicates
 
-        # best individual of each generation
-        self.best_individuals = []
-
     @override
     def _evaluate(self, population: Population) -> Individual:
         """
@@ -161,11 +158,14 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
 
         self.gen_population = population
         self.is_approx = self.gen > 0 and self.should_approximate(self)
+        best_of_gen_candidates = []
 
         for i, sub_population in enumerate(population.sub_populations):
             if self.is_approx:
-                self._approximate_individuals(sub_population.individuals,
-                                              sub_population.evaluator)
+                best_of_gen_candidates = self._approximate_individuals(
+                    sub_population.individuals,
+                    sub_population.evaluator
+                )
             else:
                 # Compute fitness scores of the whole population
                 fitnesses = self._evaluate_individuals(
@@ -178,6 +178,8 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
                                               fitnesses):
                     ind.fitness.set_fitness(fitness_score)
 
+                best_of_gen_candidates = sub_population.individuals
+
                 # Update population dataset
                 vecs = [ind.get_vector() for ind in sub_population.individuals]
                 self._update_dataset(vecs, fitnesses)
@@ -188,11 +190,14 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
                 if i == 0:
                     self.train_model()
 
+        # Update best individual of the current generation
+
         # only one subpopulation in simple case
-        individuals = population.sub_populations[0].individuals
-        best_ind = self._get_best_individual(individuals)
+        if not best_of_gen_candidates:
+            best_of_gen_candidates = population.sub_populations[0].individuals
+
+        best_ind = self._get_best_individual(best_of_gen_candidates)
         self.best_in_gen = best_ind
-        self.best_individuals.append(best_ind)
 
         self.gen += 1
         return best_ind
@@ -206,6 +211,7 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         # Dictionary of (individual, true fitness score)
         inds2scores = {}
         sample_size = 0
+        sample_inds = []
 
         if self.gen > 0 and self.gen % self.gen_sample_step == 0:
             # Sample a subset of the population and compute their fitness
@@ -525,25 +531,6 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
             preds = self.model.predict(ind_vectors)
 
         return preds
-    
-    def print_best_of_run(self, sender, data_dict) -> Tuple[Individual, float]:
-        """
-        Get the best individual of the run.
-
-        Returns
-        -------
-        Individual
-            Best individual of the run
-        """
-        population = data_dict['population']
-        individual_evaluator = population.sub_populations[0].evaluator
-        best_fitness_scores = self._evaluate_individuals(self.best_individuals,
-                                                         individual_evaluator)
-        best_ind_idx = np.argmax(best_fitness_scores)
-        best_ind = self.best_individuals[best_ind_idx]
-        best_fitness = best_fitness_scores[best_ind_idx]
-        print('Best individual\n:', best_ind.vector)
-        print('Best fitness:', best_fitness)
     
     def export_dataset(self, folder_path) -> None:
         """

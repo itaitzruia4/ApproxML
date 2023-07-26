@@ -141,8 +141,10 @@ def main():
         statistics=PlotStatistics(),
     )
     pop_eval = evoml.population_evaluator
-    evoml.register('evolution_finished', pop_eval.print_best_of_run)
     evoml.evolve()
+
+    best_ind = evoml.best_of_run_
+    print('Best fitness:', best_ind.get_pure_fitness())
 
     try:
         statistics = evoml.statistics[0]

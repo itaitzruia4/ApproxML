@@ -15,7 +15,6 @@ import json
 
 import utils
 import multiprocessing
-from blackjack_individual import BlackjackIndividual
 
 from eckity.evaluators.simple_individual_evaluator \
     import SimpleIndividualEvaluator
@@ -91,34 +90,3 @@ class BlackjackEvaluator(SimpleIndividualEvaluator):
         ind_rewards: np.ndarray
     ):
         ind_rewards[obs] += reward
-
-
-def main():
-    if len(sys.argv) < 3:
-        print('Usage: python blackjack_evaluator.py <path_to_config_file> <individual_index>')
-        sys.exit(1)
-
-    config_path = sys.argv[1]
-    idx = sys.argv[2]
-
-    # Initialize the evaluator
-    with open('blackjack_evaluator.pkl', 'rb') as f:
-        blackjack_evaluator = pickle.load(f)
-
-    # Parse the given individual, then evaluate it
-    with open(config_path, 'r') as f:
-        data = json.load(f)
-    
-    vector = data[idx]
-
-    ind = BlackjackIndividual(SimpleFitness(), length=len(vector), bounds=(0, 1))
-    ind.set_vector(vector)
-    fitness = blackjack_evaluator.evaluate_individual(ind)
-
-    # Write the fitness to stdout
-    print(fitness, flush=True)
-    print(list(ind.get_rewards()))
-
-if __name__ == '__main__':
-    main()
-
