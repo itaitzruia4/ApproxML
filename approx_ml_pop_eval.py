@@ -193,10 +193,11 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         # Update best individual of the current generation
 
         # only one subpopulation in simple case
-        if not best_of_gen_candidates:
-            best_of_gen_candidates = population.sub_populations[0].individuals
+        if best_of_gen_candidates:
+            best_ind = self._get_best_individual(best_of_gen_candidates)
+        else:
+            best_ind = None
 
-        best_ind = self._get_best_individual(best_of_gen_candidates)
         self.best_in_gen = best_ind
 
         self.gen += 1
@@ -249,6 +250,8 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         self.approx_count += n_approximated
         # update fitness evaluations counter
         self.fitness_count += sample_size
+
+        return sample_inds
 
     def _sample_individuals(self, individuals: List[Individual],
                             sample_size: int) -> List[Individual]:

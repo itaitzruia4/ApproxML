@@ -39,7 +39,6 @@ class NoveltySearchCreator(GAVectorCreator):
         # higher_is_better = True because we are maximizing novelty
         individuals = super().create_individuals(n_individuals,
                                                  higher_is_better=True)
-        individuals = self.novelty_search(individuals)
 
         # set original higher_is_better
         for ind in individuals:
@@ -67,8 +66,8 @@ class NoveltySearchCreator(GAVectorCreator):
             max_workers=10
         )
         evo_novelty.evolve()
-        archive = self.individual_evaluator.archive
-        return [ind for ind, _ in archive]
+        individuals = evo_novelty.population.sub_populations[0].individuals
+        return individuals
 
 
 class NoveltySearchEvaluator(IndividualEvaluator):
@@ -76,7 +75,6 @@ class NoveltySearchEvaluator(IndividualEvaluator):
         self.archive = []
         self.k = k
         self.max_archive_size = max_archive_size
-        self.individuals = None
 
     def evaluate(self, individual, environment_individuals):
         idx = environment_individuals.index(individual)
@@ -101,13 +99,13 @@ class NoveltySearchEvaluator(IndividualEvaluator):
         if len(self.archive) == 0:
             self.archive.append((individual, avg_nn))
         elif len(self.archive) < self.max_archive_size:
-            self.insert(individual, avg_nn)
+            self.insert_to_archive(individual, avg_nn)
         else:
             # archive is full
             if avg_nn > self.archive[0][1]:
                 # greater than minimum
                 del self.archive[0]
-                self.insert(individual, avg_nn)
+                self.insert_to_archive(individual, avg_nn)
 
     def novelty_metric_genotypic(self, i, individual, vectors):
         vec_i = np.array(vectors[i])
