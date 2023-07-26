@@ -27,15 +27,12 @@ class NoveltySearchCreator(GAVectorCreator):
         super().__init__(length=length, gene_creator=gene_creator,
                          bounds=bounds, vector_type=vector_type,
                          fitness_type=fitness_type, events=events)
-        self.k = k
-        self.max_archive_size = max_archive_size
-        self.archive = []
         self.operators_sequence = operators_sequence
         self.individual_evaluator = NoveltySearchEvaluator(
-            k=self.k,
-            max_archive_size=self.max_archive_size
+            k=k,
+            max_archive_size=max_archive_size
         )
-    
+
     @override
     def create_individuals(self, n_individuals, higher_is_better):
         # create individuals with random vectors
@@ -48,7 +45,7 @@ class NoveltySearchCreator(GAVectorCreator):
         for ind in individuals:
             ind.fitness.higher_is_better = higher_is_better
         return individuals
-    
+
     def novelty_search(self, individuals):
         evo_novelty = SimpleEvolution(
             Subpopulation(creators=None,
@@ -70,8 +67,8 @@ class NoveltySearchCreator(GAVectorCreator):
             max_workers=10
         )
         evo_novelty.evolve()
-        individuals = evo_novelty.population.sub_populations[0].individuals
-        return individuals
+        archive = self.individual_evaluator.archive
+        return [ind for ind, _ in archive]
 
 
 class NoveltySearchEvaluator(IndividualEvaluator):
@@ -84,41 +81,42 @@ class NoveltySearchEvaluator(IndividualEvaluator):
     def evaluate(self, individual, environment_individuals):
         idx = environment_individuals.index(individual)
         vectors = [ind.get_vector() for ind in environment_individuals]
-        novelty_score = self.novelty_metric_genotypic(idx, vectors)
+        novelty_score = self.novelty_metric_genotypic(idx, individual, vectors)
         return novelty_score
 
-    def insert_to_archive(self, point, avg_nn):
+    def insert_to_archive(self, individual, avg_nn):
         i = 0
         while i < len(self.archive):
             if avg_nn < self.archive[i][1]:
                 break
             else:
                 i += 1
-        self.archive = self.archive[:i] + [(point, avg_nn)] + self.archive[i:]
+        self.archive =\
+            self.archive[:i] + [(individual, avg_nn)] + self.archive[i:]
 
-    def add_to_archive(self, point, avg_nn):
+    def add_to_archive(self, individual, avg_nn):
         # add point to archive if it is greater than minimum
         # archive is maintained sorted by avg_nn: [(point1, avg_nn1),  (point2, avg_nn2),... ]
 
         if len(self.archive) == 0:
-            self.archive.append((point, avg_nn)) 
+            self.archive.append((individual, avg_nn))
         elif len(self.archive) < self.max_archive_size:
-            self.insert(point, avg_nn)
+            self.insert(individual, avg_nn)
         else:
             # archive is full
-            if avg_nn > self.archive[0][1]: 
+            if avg_nn > self.archive[0][1]:
                 # greater than minimum
                 del self.archive[0]
-                self.insert(point, avg_nn)
+                self.insert(individual, avg_nn)
 
-    def novelty_metric_genotypic(self, i, vectors):
+    def novelty_metric_genotypic(self, i, individual, vectors):
         vec_i = np.array(vectors[i])
         dists = [np.linalg.norm(vec_i - np.array(vectors[j]))
                  for j in range(len(vectors)) if j != i]
-        dists = [np.linalg.norm(vec_i - np.array(self.archive[j][0]))
-                 for j in range(len(self.archive))]
+        dists += [np.linalg.norm(vec_i - np.array(self.archive[j][0].vector))
+                  for j in range(len(self.archive))]
         dists = sorted(dists)
-        
+
         avg_nn = sum(dists[:self.k])/self.k     # average distance to nearest neighbors
-        self.add_to_archive(vectors[i], avg_nn)
+        self.add_to_archive(individual, avg_nn)
         return avg_nn
