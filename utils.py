@@ -1,11 +1,5 @@
 import numpy as np
 
-SBATCH_PATH = '/home/itaitz/EC-KitY'
-CONFIG_FILE_FORMAT = 'json'
-
-EVAL_TIMEOUT = 3600
-FITNESS_ERROR_VALUE = -100_000
-
 DATASET_PATH = 'datasets'
 
 linear_gen_weight = lambda gen: gen + 1
@@ -38,41 +32,21 @@ HOLES = [i * FROZEN_LAKE_MAP_SIZE + j
          if FROZEN_LAKE_MAP[i][j] == 'H']
 FROZEN_LAKE_STATES = FROZEN_LAKE_MAP_SIZE ** 2 - len(HOLES) - 1
 
+# player position: 4x12, monster position: 3x12
+CLIFF_WALKING_MAP_SHAPE = (4, 12)
+CW_UP = 0
+CW_RIGHT = 1
+CW_DOWN = 2
+CW_LEFT = 3
+NUM_CLIFF_WALKING_STATES = 37
+MONSTER_CLIFF_SPACE_SHAPE = (48, 36)
+CLIFF_UNPLAYABLE_STATES = list(range(37, 48))
+
+
+MONSTER_CLIFF_STATES = 1332     # 4*12*3*12 - 1*11*3*12
+
 def cosine_similarity(a, b):
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
-def generate_sbatch_str(gen, n_individuals, device, job_id, sub_population_idx):
-    general_config = f'''#!/bin/bash
-################################################################################################
-### sbatch configuration parameters must start with #SBATCH and must precede any other commands.
-### To ignore, just add another # - like so: ##SBATCH
-################################################################################################
-
-#SBATCH --array=1-{n_individuals}
-#SBATCH --partition main			### specify partition name where to run a job. main: all nodes; gtx1080: 1080 gpu card nodes; rtx2080: 2080 nodes; teslap100: p100 nodes; titanrtx: titan nodes
-#SBATCH --time 6-10:30:00			### limit the time of job running. Make sure it is not greater than the partition time limit!! Format: D-H:MM:SS
-#SBATCH --mail-type=FAIL            ### send email when job ends or fails
-#SBATCH --job-name {device[0]}job_{gen}_%a			### name of the job
-#SBATCH --output=jobs/{device}/{job_id}/{gen}_{sub_population_idx}_%a.out			### output log for running job
-#SBATCH --wait
-'''
-
-    gpu_config = f'''#SBATCH --gpus=1				### number of GPUs, allocating more than 1 requires IT team's permission
-    #SBATCH --mem=200M				### ammount of RAM memory, allocating more than 60G requires IT team's permission
-    '''
-
-    cpu_config = f'''#SBATCH --cpus-per-task=6 # 6 cpus per task – use for multithreading, usually with --tasks=1
-    #SBATCH --mem=100M				### ammount of RAM memory, allocating more than 60G requires IT team's permission
-    '''
-
-    problem = 'nn' if device == 'gpu' else 'blackjack'
-
-    code_config = f'''echo "SLURM_JOBID"=$SLURM_JOBID
-### Start your code below ####
-module load anaconda				### load anaconda module (must be present when working with conda environments)
-source activate ec_env 				### activate a conda environment, replace my_env with your conda environment
-python "/sise/home/itaitz/EC-KitY/{problem}_evaluator.py" configs/{device}/{job_id}/{gen}_{sub_population_idx}.{CONFIG_FILE_FORMAT} $SLURM_ARRAY_TASK_ID
-'''
-
-    device_config = gpu_config if device == 'gpu' else cpu_config
-    return general_config + device_config + code_config
+    dot_product = np.dot(a, b)
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+    return dot_product / (norm_a * norm_b)

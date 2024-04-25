@@ -6,8 +6,8 @@ import os
 import json
 
 from sklearn.metrics import mean_absolute_error, make_scorer
-from sklearn.model_selection import cross_val_score
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, cross_val_score
+from sklearn.metrics.pairwise import cosine_similarity
 
 from sklearn.linear_model import SGDRegressor
 from overrides import override
@@ -19,7 +19,7 @@ from eckity.fitness.fitness import Fitness
 from eckity.individual import Individual
 from eckity.population import Population
 
-from typing import List, Tuple
+from typing import List
 import utils
 
 
@@ -50,20 +50,10 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         The weight is used to give more importance to later generations.
     hide_fitness : bool, optional, default=False
         whether to return approximated fitness scores for sampled individuals
-    ensemble : bool, optional, default=False
-        whether to use an ensemble of models for fitness approximation
     n_folds : int, optional, default=None
         number of folds to use in cross validation
     handle_duplicates : {'ignore', 'first', 'last}, optional, default='ignore'
         how to handle duplicate individuals in the dataset
-    use_slurm : bool, optional, default=False
-        whether to use slurm for remote evaluation
-    job_id : str, optional, default=None
-        slurm job id
-    split_experiment : bool, optional, default=False
-        whether to split the experiment into two - one for evolution and one
-        for fitness approximation.
-        This is used for statistics.
     """
 
     def __init__(self,
@@ -74,12 +64,12 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
                  scoring=mean_absolute_error,
                  model_type=SGDRegressor,
                  model_params=None,
-                 gen_weight=lambda gen: gen + 1,
+                 gen_weight=None,
+                 norm_func=None,
+                 inv_norm_func=None,
                  hide_fitness=False,
-                 ensemble=False,
                  n_folds=None,
                  handle_duplicates='ignore',
-                 use_slurm=False,
                  job_id=None):
         super().__init__()
         self.approx_fitness_error = float('inf')
@@ -95,7 +85,7 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         self.model_type = model_type
 
         # ML model
-        self.model = None
+        self.model = self.model_type(**self.model_params)
 
         # generation counter
         self.gen = 0
@@ -103,9 +93,6 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         # counters of real/approximate fitness scores
         self.fitness_count = 0
         self.approx_count = 0
-
-        self.use_slurm = use_slurm
-        self.job_id = job_id
 
         self.gen_population = None
         self.best_in_gen = None
@@ -124,19 +111,25 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         # Process/Thread pool executor, used for parallel fitness evaluation
         self.executor = None
 
-        # Ensemble of models
-        self.ensemble = ensemble
-        if self.ensemble:
-            self.models = dict()
-
         # generation weighting function for sample weights
         self.gen_weight = gen_weight
+
+        # normalizing function
+        if norm_func is None:
+            norm_func = lambda y: y
+        if inv_norm_func is None:
+            inv_norm_func = lambda y: y
+
+        self.norm_func = norm_func
+        self.inv_norm_func = inv_norm_func
 
         # number of folds to use in cross validation
         self.n_folds = n_folds
 
         # how to handle duplicate individuals in the dataset
         self.handle_duplicates = handle_duplicates
+
+        self.job_id = job_id
 
     @override
     def _evaluate(self, population: Population) -> Individual:
@@ -224,7 +217,8 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
                 # Sample a subset of individuals from the population
                 # and compute their real fitness score
                 sample_inds = self._sample_individuals(individuals,
-                                                       sample_size)
+                                                       sample_size,
+                                                       preds)
                 fitness_scores = self._evaluate_individuals(
                     sample_inds,
                     ind_eval
@@ -253,8 +247,10 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
 
         return sample_inds
 
-    def _sample_individuals(self, individuals: List[Individual],
-                            sample_size: int) -> List[Individual]:
+    def _sample_individuals(self,
+                            individuals: List[Individual],
+                            sample_size: int,
+                            preds: np.ndarray) -> List[Individual]:
         """
         Sample individuals from the population according to the given strategy
 
@@ -276,6 +272,15 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         # Sample individuals randomly
         elif self.sample_strategy == 'random':
             sample_inds = random.sample(individuals, sample_size)
+        # Sample best individuals according to the model
+        elif self.sample_strategy == 'best':
+            ind_preds = zip(individuals, preds)
+            sorted_inds = [
+                ind
+                for ind, _
+                in sorted(ind_preds, key=lambda x: x[1], reverse=True)
+            ]
+            sample_inds = sorted_inds[:sample_size]
         return sample_inds
     
     def _get_cosine_scores(self,
@@ -294,17 +299,17 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         List[float]
             list of cosine similarity scores
         """
+        # matrix of size (n_samples, n_features)
         genotypes = self.df.iloc[:, :-2]
+        # matrix of size (sample_size, n_features)
+        ind_vectors = [ind.vector for ind in individuals]
+
+        # matrix of size (n_samples, sample_size)
+        similarity_scores = cosine_similarity(genotypes, ind_vectors)
+
         # obtain the maximum similarity score in the dataset
         # for each individual
-        similarity_scores = [
-            genotypes.apply(lambda row:
-                            utils.cosine_similarity(ind.vector, row),
-                            axis=1, raw=True
-                            ).max()
-            for ind in individuals
-        ]
-        return similarity_scores
+        return np.max(similarity_scores, axis=0)
 
     def _get_best_individual(self,
                              individuals: List[Individual]) -> Individual:
@@ -335,115 +340,9 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
             list of fitness scores, by the order of the individuals
         """
 
-        if not self.use_slurm:
-            eval_results = self.executor.map(ind_eval.evaluate_individual,
-                                             individuals)
-            fitness_scores = list(eval_results)
-        
-        else:
-            fitness_scores = self._evaluate_slurm(individuals,
-                                                  sub_population_idx)
-        return fitness_scores
-
-    def _evaluate_slurm(self,
-                        individuals: List[Individual],
-                        subpop_idx=0) -> List[float]:
-        device = 'cpu'
-        # Create a configuration file for the individuals
-        config = {i: ind.get_vector()
-                  for i, ind in enumerate(individuals, start=1)}
-
-        # create folder for this experiment if it doesn't exist
-        if not os.path.exists(f'configs/{device}/{self.job_id}'):
-            os.mkdir(f'configs/{device}/{self.job_id}')
-    
-        with open(
-            f'configs/{device}/{self.job_id}/{self.gen}_{subpop_idx}.json', 'w'
-        ) as f:
-            json.dump(config, f)
-
-        # create folder for this experiment if it doesn't exist
-        if not os.path.exists(f'jobs/{device}/{self.job_id}'):
-            os.mkdir(f'jobs/{device}/{self.job_id}')
-
-        # create a job script for this generation and submit it
-        sbatch_str = utils.generate_sbatch_str(self.gen,
-                                               len(individuals),
-                                               device,
-                                               self.job_id,
-                                               subpop_idx)
-        with open(
-            f'jobs/{device}/{self.job_id}/sbatch_{self.gen}_{subpop_idx}.sh',
-            'w'
-        ) as f:
-            f.write(sbatch_str)
-
-        cmdline = [
-            'sbatch',
-            f'jobs/{device}/{self.job_id}/sbatch_{self.gen}_{subpop_idx}.sh'
-        ]
-        proc = subprocess.Popen(cmdline)
-
-        fitness_scores = []
-
-        try:
-            proc.wait(timeout=utils.EVAL_TIMEOUT)
-
-        except subprocess.TimeoutExpired as e:
-            print(
-                f'Job {device}/{self.job_id}/{self.gen}_{subpop_idx}',
-                'timed out. error:', e
-            )
-            fitness_scores = [-np.inf] * len(individuals)
-            return fitness_scores
-        
-        for i in range(1, len(individuals) + 1):
-            try:
-                # extract fitness from job .out file
-                with open(
-                    f'jobs/{device}/{self.job_id}/{self.gen}_{subpop_idx}_{i}.out', 'r'
-                ) as f:
-                    # ignore first line
-                    f.readline()
-                    # parse fitness score
-                    fitness = float(f.readline())
-
-            except (FileNotFoundError, ValueError) as e:
-                print(
-                    f'Job {device}/{self.job_id}/{self.gen}_{subpop_idx}_{i}',
-                    'failed. error:', e
-                )
-                fitness = -np.inf
-
-                error_file_path = f'jobs/{device}/{self.job_id}/job-{self.gen}_{subpop_idx}_{i}.out'
-                if os.path.exists(error_file_path):
-                    with open(error_file_path, 'r') as f:
-                        print(f.read())
-
-            # Remove individual output file
-            try:
-                
-                os.remove(
-                    f'jobs/{device}/{self.job_id}/{self.gen}_{subpop_idx}_{i}.out'
-                )
-            except FileNotFoundError as e:
-                print(
-                    f'File {device}/{self.job_id}/{self.gen}_{subpop_idx}_{i}',
-                    'not found. Error:', e
-                )
-            
-            fitness_scores.append(fitness)
-
-        # Remove config file
-        try:
-            os.remove(
-                f'configs/{device}/{self.job_id}/{self.gen}_{subpop_idx}.json'
-            )
-        except FileNotFoundError as e:
-            print(
-                f'File not found in job {device}_{self.job_id}_{self.gen}_{subpop_idx}:', e
-            )
-
+        eval_results = self.executor.map(ind_eval.evaluate_individual,
+                                         individuals)
+        fitness_scores = list(eval_results)        
         return fitness_scores
 
     def _update_dataset(self, ind_vectors: List[List], fitnesses: List[float]):
@@ -485,24 +384,23 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         fitnesses : List[float]
             Fitness scores of the individuals, respectively.
         """
-        self.model = self.model_type(**self.model_params)
-
-        # Add new model to the ensemble (if ensemble is enabled)
-        if self.ensemble:
-            self.models[self.gen] = self.model
-
         X, y = self.df.iloc[:, :-2].to_numpy(), self.df['fitness'].to_numpy()
         # Vector of generation number of each individual in the dataset
         #  (used for sample weights)
-        w = self.gen_weight(self.df['gen'].to_numpy())
+        w = self.gen_weight(self.df['gen'].to_numpy()) \
+            if self.gen_weight is not None else None
+        
+        y = self.norm_func(y)
 
         # Perform KFold CV to estimate the fitness error of the model
         if self.n_folds is not None:
             kf = KFold(n_splits=self.n_folds, shuffle=True)
             scorer = make_scorer(self.scoring)
-            cross_val_scores = cross_val_score(self.model,
-                                               X, y, cv=kf,
-                                               scoring=scorer)
+            cross_val_scores = cross_val_score(
+                self.model,
+                X, y, cv=kf,
+                fit_params={'sample_weight': w},
+                scoring=scorer)
             self.approx_fitness_error = np.mean(cross_val_scores)
 
         # Now fit the model on the whole training set
@@ -522,17 +420,9 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         ndarray of shape (n_samples,)
            Predicted target values per element in X.
         """
-        ind_vectors = [ind.get_vector() for ind in individuals]
-
-        if self.ensemble:
-            weights = [self.gen_weight(gen) for gen in self.models]
-            preds = [model.predict(ind_vectors)
-                     for model in self.models.values()]
-            preds = np.average(preds, weights=weights, axis=0)
-
-        else:
-            preds = self.model.predict(ind_vectors)
-
+        ind_vectors = np.array([ind.get_vector() for ind in individuals])
+        preds = self.model.predict(ind_vectors)
+        preds = self.inv_norm_func(preds)
         return preds
     
     def export_dataset(self, folder_path) -> None:
