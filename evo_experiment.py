@@ -23,7 +23,6 @@ import utils
 
 from blackjack_evaluator import BlackjackEvaluator
 from frozen_lake_evaluator import FrozenLakeEvaluator
-from cliffwalking_evaluator import CliffWalkingEvaluator
 from monstercliff_evaluator import MonsterCliffWalkingEvaluator
 
 
@@ -51,13 +50,6 @@ def main():
         ind_eval = FrozenLakeEvaluator(total_episodes=2000)
         mutation = IntVectorNPointMutation(probability=0.3, n=length // 10)
         generations = 50
-
-    elif problem == "cliffwalking":
-        length = utils.NUM_CLIFF_WALKING_STATES
-        ind_eval = CliffWalkingEvaluator()
-        creator = GAIntVectorCreator(length=length, bounds=(0, 3))
-        mutation = IntVectorNPointMutation(probability=0.3, n=length // 10)
-        generations = 100
 
     elif problem == "monstercliff":
         length = utils.MONSTER_CLIFF_STATES

@@ -20,16 +20,24 @@ from eckity.genetic_operators.mutations.vector_random_mutation import (
 )
 
 from approx_ml_pop_eval import ApproxMLPopulationEvaluator
+
+# switch conditions
 from cos_sim_switch_cond import CosSimSwitchCondition
+from cv_error_switch_condition import CVErrorSwitchCondition
+
+# sampling strategies
+from cos_sim_strat import CosSimSamplingStrategy
+from best_strat import BestSamplingStrategy
+from random_strat import RandomSamplingStrategy
 
 from plot_statistics import PlotStatistics
-import utils
 from novelty_search import NoveltySearchCreator
 
 from blackjack_evaluator import BlackjackEvaluator
 from frozen_lake_evaluator import FrozenLakeEvaluator
-from cliffwalking_evaluator import CliffWalkingEvaluator
 from monstercliff_evaluator import MonsterCliffWalkingEvaluator
+
+import utils
 
 
 def main():
@@ -48,16 +56,19 @@ def main():
     model = sys.argv[3]
     switch_method = sys.argv[4]
     threshold = float(sys.argv[5])
-    sample_strategy = sys.argv[6]
+    strategy_type = sys.argv[6]
     sample_rate = float(sys.argv[7])
 
     gen_weight = utils.sqrt_gen_weight
 
-    norm_func = lambda y: np.log(-y)
-    inv_norm_func = lambda y: -np.exp(y)
+    if problem == 'monstercliff' and model != 'elm':
+        norm_func = lambda y: np.log(-y)
+        inv_norm_func = lambda y: -np.exp(y)
+    else:
+        norm_func = None
+        inv_norm_func = None
 
     novelty = "novelty" in sys.argv
-    n_folds = 5 if switch_method == "error" else None
     handle_duplicates = "ignore"
 
     if problem == "blackjack":
@@ -70,13 +81,6 @@ def main():
     elif problem == "frozenlake":
         length = utils.FROZEN_LAKE_STATES
         ind_eval = FrozenLakeEvaluator(total_episodes=2000)
-        creator = GAIntVectorCreator(length=length, bounds=(0, 3))
-        mutation = IntVectorNPointMutation(probability=0.3, n=length // 10)
-        generations = 50
-
-    elif problem == "cliffwalking":
-        length = utils.NUM_CLIFF_WALKING_STATES
-        ind_eval = CliffWalkingEvaluator()
         creator = GAIntVectorCreator(length=length, bounds=(0, 3))
         mutation = IntVectorNPointMutation(probability=0.3, n=length // 10)
         generations = 100
@@ -119,40 +123,43 @@ def main():
 
     model_params = (
         {"alpha": 0.3, "max_iter": 3000}
-        if model == "ridge"
-        else (
-            {"alpha": 0.65, "max_iter": 1000}
-            if model == "lasso" and problem == "frozenlake"
-            else (
-                {"alpha": 0.6, "max_iter": 2000}
-                if model == "ridge" and problem == "monstercliff"
-                else {}  # default
-            )
-        )
+        if problem == "blackjack" and model == "ridge"
+        else {"alpha": 0.65, "max_iter": 1000}
+        if problem == "frozenlake" and model == "lasso"
+        else {"alpha": 0.15, "max_iter": 2000}
+        if problem == "monstercliff" and model == "ridge"
+        else {}  # default
     )
 
     # set switch condition
     if switch_method == "cosine":
-        cos_sim = CosSimSwitchCondition(threshold=threshold, switch_once=False)
+        cos_sim_switch = CosSimSwitchCondition(threshold=threshold)
 
         def should_approximate(eval):
-            return cos_sim.should_approximate(eval)
+            return cos_sim_switch.should_approximate(eval)
 
     elif switch_method == "error":
+        cv_err_switch = CVErrorSwitchCondition(threshold=threshold)
 
         def should_approximate(eval):
-            return eval.approx_fitness_error < threshold
+            return cv_err_switch.should_approximate(eval)
 
     elif switch_method == "false":
-
         def should_approximate(eval):
             return False
-
+        
     else:
         raise ValueError("Invalid switch method " + switch_method)
 
-    if sample_strategy not in ("random", "cosine"):
-        raise ValueError("Invalid sampling strategy", sample_strategy)
+    # set sampling strategy
+    if strategy_type == 'random':
+        sampling_strat = RandomSamplingStrategy()
+    elif strategy_type == 'cosine':
+        sampling_strat = CosSimSamplingStrategy()
+    elif strategy_type == 'best':
+        sampling_strat = BestSamplingStrategy()
+    else:
+        raise ValueError("Invalid sampling strategy", strategy_type)
 
     evoml = SimpleEvolution(
         Subpopulation(
@@ -171,10 +178,9 @@ def main():
         population_evaluator=ApproxMLPopulationEvaluator(
             population_sample_size=sample_rate,
             gen_sample_step=1,
-            sample_strategy=sample_strategy,
+            sampling_strategy=sampling_strat,
             model_type=model_type,
             model_params=model_params,
-            n_folds=n_folds,
             gen_weight=gen_weight,
             norm_func=norm_func,
             inv_norm_func=inv_norm_func,
@@ -209,7 +215,7 @@ def main():
     print("approximations:", pop_eval.approx_count)
 
     if switch_method == "cosine":
-        print("cosine scores:", cos_sim.history)
+        print("cosine scores:", cos_sim_switch.history)
 
 
 if __name__ == "__main__":

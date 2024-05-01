@@ -28,6 +28,7 @@ class CosSimSwitchCondition:
         if switch_once:
             self.switched = False
 
+        # used for statistics
         self.history = []
 
     def should_approximate(self, evaluator: ApproxMLPopulationEvaluator):
