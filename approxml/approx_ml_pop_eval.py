@@ -1,16 +1,17 @@
 from typing import Any, Callable
+from typing_extensions import override
 
 import numpy as np
 import pandas as pd
-from overrides import override
-from sklearn.base import RegressorMixin
-from sklearn.linear_model import Ridge
-
-from approxml.sample import RandomSamplingStrategy
 from eckity.evaluators import PopulationEvaluator, SimpleIndividualEvaluator
 from eckity.fitness.fitness import Fitness
 from eckity.individual import Individual
 from eckity.population import Population
+from approxml.sample import SamplingStrategy
+from sklearn.base import RegressorMixin
+from sklearn.linear_model import Ridge
+
+from approxml.sample import RandomSamplingStrategy
 
 
 class ApproxMLPopulationEvaluator(PopulationEvaluator):
@@ -33,7 +34,7 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         model to use for fitness approximation
     model_params : dict, optional, default=None
         model parameters
-    gen_weight : callable, optional, default=lambda gen: gen + 1
+    f_gen : callable, optional, default=lambda gen: gen + 1
         function to compute the weight of each generation in the training.
         The weight is used to give more importance to later generations.
     hide_fitness : bool, optional, default=False
@@ -47,16 +48,16 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         should_approximate: Callable[
             "ApproxMLPopulationEvaluator", bool
         ] = None,
-        sample_rate=0.1,
-        sampling_strategy=None,
-        gen_sample_step=1,
+        sample_rate: float = 0.1,
+        sampling_strategy: SamplingStrategy = None,
+        gen_sample_step: int = 1,
         model: RegressorMixin = Ridge(),
-        gen_weight=None,
-        norm_func=None,
-        inv_norm_func=None,
-        hide_fitness=False,
-        handle_duplicates="ignore",
-        job_id=None,
+        f_gen: Callable[int, float] = None,
+        norm_func: Callable[np.ndarray, np.ndarray] = None,
+        inv_norm_func: Callable[np.ndarray, np.ndarray] = None,
+        hide_fitness: bool = False,
+        handle_duplicates: str = "ignore",
+        job_id: str = None,
     ):
         super().__init__()
 
@@ -103,7 +104,7 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         self.executor = None
 
         # generation weighting function for sample weights
-        self.gen_weight = gen_weight
+        self.f_gen = f_gen
 
         # normalizing function
         if norm_func is None:
@@ -312,10 +313,9 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         """
         X, y = self.get_X_y()
         fit_params = self.get_fit_params()
-        w = fit_params["sample_weight"]
 
         # retrain the model on the whole training set
-        self.model.fit(X, y, sample_weight=w)
+        self.model.fit(X, y, **fit_params)
 
     def predict(self, individuals: list[Individual]):
         """
@@ -341,15 +341,15 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         y = self.norm_func(y)
         return X, y
 
-    def get_fit_params(self) -> dict[str, Any]:
+    def get_fit_params(self, y: np.ndarray) -> dict[str, Any]:
         # Vector of generation number of each individual in the dataset
         #  (used for sample weights)
         w = (
-            self.gen_weight(self.df["gen"].to_numpy())
-            if self.gen_weight is not None
+            np.full(y.shape, fill_value=self.f_gen(self.gen))
+            if self.f_gen is not None
             else None
         )
-        return {"sample_weight": w}
+        return {"sample_weight": w} if w else {}
 
     def export_dataset(self, folder_path: str) -> None:
         """
