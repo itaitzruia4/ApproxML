@@ -1,34 +1,56 @@
-'''
+"""
 Origin: Frozen Lake Benchmark
 https://gymnasium.farama.org/tutorials/training_agents/FrozenLake_tuto/#sphx-glr-tutorials-training-agents-frozenlake-tuto-py
-'''
+"""
 
-
-import gymnasium as gym
 from typing import List
 
-import utils
+import gymnasium as gym
 
-from eckity.evaluators.simple_individual_evaluator \
-    import SimpleIndividualEvaluator
+from eckity.evaluators.simple_individual_evaluator import (
+    SimpleIndividualEvaluator,
+)
+
+FROZEN_LAKE_MAP = [
+    "SFFFFFFF",
+    "FFFFFFFF",
+    "FFFHFFFF",
+    "FFFFFHFF",
+    "FFFHFFFF",
+    "FHHFFFHF",
+    "FHFFHFHF",
+    "FFFHFFFG",
+]
+FROZEN_LAKE_MAP_SIZE = len(FROZEN_LAKE_MAP)
+HOLES = [
+    i * FROZEN_LAKE_MAP_SIZE + j
+    for i in range(FROZEN_LAKE_MAP_SIZE)
+    for j in range(FROZEN_LAKE_MAP_SIZE)
+    if FROZEN_LAKE_MAP[i][j] == "H"
+]
+FROZEN_LAKE_STATES = FROZEN_LAKE_MAP_SIZE**2 - len(HOLES) - 1
 
 
 class FrozenLakeEvaluator(SimpleIndividualEvaluator):
-    def __init__(self,
-                 arity=1,
-                 events=None,
-                 event_names=None,
-                 total_episodes=2000,
-                 is_slippery=True):
+    def __init__(
+        self,
+        arity=1,
+        events=None,
+        event_names=None,
+        total_episodes=2000,
+        is_slippery=True,
+    ):
         super().__init__(arity, events, event_names)
         self.total_episodes = total_episodes
 
         # Generate a random 8x8 map with 80% of the cells being frozen
         # This map will remain the same through the whole evolutionary run
         map_size = utils.FROZEN_LAKE_MAP_SIZE
-        self.env = gym.make('FrozenLake-v1',
-                            map_name=f'{map_size}x{map_size}',
-                            is_slippery=is_slippery)
+        self.env = gym.make(
+            "FrozenLake-v1",
+            map_name=f"{map_size}x{map_size}",
+            is_slippery=is_slippery,
+        )
 
     def evaluate_individual(self, individual):
         vector = individual.get_vector().copy()
@@ -48,7 +70,9 @@ class FrozenLakeEvaluator(SimpleIndividualEvaluator):
                 action = self.choose_action(state=state, vector=vector)
 
                 # Take the action (a) and observe the outcome state(s') and reward (r)
-                new_state, reward, terminated, truncated, _ = self.env.step(action)
+                new_state, reward, terminated, truncated, _ = self.env.step(
+                    action
+                )
 
                 done = terminated or truncated
 

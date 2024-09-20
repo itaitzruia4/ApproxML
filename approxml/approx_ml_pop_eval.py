@@ -1,4 +1,4 @@
-from typing import Any, Self
+from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
@@ -44,7 +44,9 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
 
     def __init__(
         self,
-        should_approximate: callable[Self, bool] = None,
+        should_approximate: Callable[
+            "ApproxMLPopulationEvaluator", bool
+        ] = None,
         sample_rate=0.1,
         sampling_strategy=None,
         gen_sample_step=1,
@@ -181,7 +183,7 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
     def _approximate_individuals(
         self,
         individuals: list[Individual],
-        ind_eval: Self,
+        ind_eval: SimpleIndividualEvaluator,
     ) -> list[Individual]:
         # Obtain fitness score predictions from ML model
         preds = self.predict(individuals)

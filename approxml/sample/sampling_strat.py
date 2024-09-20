@@ -2,9 +2,9 @@ from abc import ABC, abstractmethod
 from typing import List
 
 import numpy as np
-from eckity.individual import Individual
+import pandas as pd
 
-from ..approx_ml_pop_eval import ApproxMLPopulationEvaluator
+from eckity.individual import Individual
 
 
 class SamplingStrategy(ABC):
@@ -17,7 +17,7 @@ class SamplingStrategy(ABC):
         individuals: List[Individual],
         sample_size: int,
         preds: np.ndarray,
-        evaluator: ApproxMLPopulationEvaluator,
+        population_dataset: pd.DataFrame,
     ) -> List[Individual]:
         """
         Sample individuals from the population according to the given strategy

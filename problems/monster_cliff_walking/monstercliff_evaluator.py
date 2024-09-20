@@ -1,9 +1,10 @@
 import gymnasium as gym
 import numpy as np
-import utils
 from eckity.evaluators import SimpleIndividualEvaluator
 from .monstercliffwalking import unpair
 
+# player position: 4x12, monster position: 3x12
+MONSTER_CLIFF_STATES = 1332  # 4*12*3*12 - 1*11*3*12
 
 class MonsterCliffWalkingEvaluator(SimpleIndividualEvaluator):
     def __init__(
@@ -49,7 +50,7 @@ class MonsterCliffWalkingEvaluator(SimpleIndividualEvaluator):
         """
         number = self.env.unwrapped.state_to_szudzik[obs]
         state = unpair(number, n=2)
-        idx = np.ravel_multi_index(state, utils.MONSTER_CLIFF_SPACE_SHAPE)
+        idx = np.ravel_multi_index(state, MONSTER_CLIFF_SPACE_SHAPE)
         return int(vector[idx])
 
     def terminate(self):

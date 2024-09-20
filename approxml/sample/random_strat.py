@@ -2,9 +2,10 @@ import random
 from typing import List
 
 import numpy as np
+import pandas as pd
+
 from eckity.individual import Individual
 
-from ..approx_ml_pop_eval import ApproxMLPopulationEvaluator
 from .sampling_strat import SamplingStrategy
 
 
@@ -14,6 +15,6 @@ class RandomSamplingStrategy(SamplingStrategy):
         individuals: List[Individual],
         sample_size: int,
         preds: np.ndarray,
-        evaluator: ApproxMLPopulationEvaluator,
+        population_dataset: pd.DataFrame,
     ):
         return random.sample(individuals, sample_size)

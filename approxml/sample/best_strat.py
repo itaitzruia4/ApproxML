@@ -1,9 +1,9 @@
 from typing import List
 
 import numpy as np
+import pandas as pd
 from eckity.individual import Individual
 
-from approxml import ApproxMLPopulationEvaluator
 from .sampling_strat import SamplingStrategy
 
 
@@ -13,7 +13,7 @@ class BestSamplingStrategy(SamplingStrategy):
         individuals: List[Individual],
         sample_size: int,
         preds: np.ndarray,
-        evaluator: ApproxMLPopulationEvaluator,
+        population_dataset: pd.DataFrame,
     ):
         ind_preds = zip(individuals, preds)
         sorted_inds = [

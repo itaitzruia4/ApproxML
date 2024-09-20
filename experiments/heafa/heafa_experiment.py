@@ -1,6 +1,17 @@
 import sys
 
 import numpy as np
+from elm import ELM
+from heafa_breeder import HEAFABreeder
+from heafa_creator import HEAFACreator
+from heafa_population_evaluator import HEAFAPopulationEvaluator
+from operators.cell_exchange_mutation import CellExchangeMutation
+from operators.cx_reproduction import CXReproduction
+from operators.random_selection import RandomSelection
+
+import experiments.utils as utils
+from approxml.approx_ml_pop_eval import ApproxMLPopulationEvaluator
+from approxml.sample import BestSamplingStrategy, RandomSamplingStrategy
 from eckity.algorithms.simple_evolution import SimpleEvolution
 from eckity.breeders.simple_breeder import SimpleBreeder
 from eckity.creators.ga_creators.bit_string_vector_creator import (
@@ -16,24 +27,16 @@ from eckity.genetic_operators.mutations.vector_random_mutation import (
     BitStringVectorNFlipMutation,
     IntVectorNPointMutation,
 )
-from eckity.genetic_operators.selections.tournament_selection import TournamentSelection
+from eckity.genetic_operators.selections.tournament_selection import (
+    TournamentSelection,
+)
 from eckity.subpopulation import Subpopulation
-
-import examples.utils as utils
-from approxml.approx_ml_pop_eval import ApproxMLPopulationEvaluator
-from sampling_strategies.best_strat import BestSamplingStrategy
+from experiments.plot_statistics import PlotStatistics
 from problems.blackjack.blackjack_evaluator import BlackjackEvaluator
-from cell_exchange_mutation import CellExchangeMutation
-from cx_reproduction import CXReproduction
-from heafa.elm import ELM
 from problems.frozen_lake.frozen_lake_evaluator import FrozenLakeEvaluator
-from heafa_breeder import HEAFABreeder
-from heafa_creator import HEAFACreator
-from heafa_population_evaluator import HEAFAPopulationEvaluator
-from monstercliff_evaluator import MonsterCliffWalkingEvaluator
-from plot_statistics import PlotStatistics
-from heafa.random_selection import RandomSelection
-from random_strat import RandomSamplingStrategy
+from problems.monster_cliff_walking.monstercliff_evaluator import (
+    MonsterCliffWalkingEvaluator,
+)
 
 
 def main():
@@ -64,7 +67,9 @@ def main():
         generations = 200
         if use_our_config:
             creator = GABitStringVectorCreator(length=length, bounds=(0, 1))
-            mutation = BitStringVectorNFlipMutation(probability=0.3, n=length // 10)
+            mutation = BitStringVectorNFlipMutation(
+                probability=0.3, n=length // 10
+            )
         else:
             creator = HEAFACreator(
                 length=length, bounds=(0, 1), vector_type=BitStringVector
@@ -79,7 +84,9 @@ def main():
             creator = GAIntVectorCreator(length=length, bounds=(0, 3))
             mutation = IntVectorNPointMutation(probability=0.3, n=length // 10)
         else:
-            creator = HEAFACreator(length=length, bounds=(0, 3), vector_type=IntVector)
+            creator = HEAFACreator(
+                length=length, bounds=(0, 3), vector_type=IntVector
+            )
             mutation = CellExchangeMutation(probability=0.2)
 
     elif problem == "monstercliff":
@@ -90,7 +97,9 @@ def main():
             creator = GAIntVectorCreator(length=length, bounds=(0, 3))
             mutation = IntVectorNPointMutation(probability=0.3, n=length // 10)
         else:
-            creator = HEAFACreator(length=length, bounds=(0, 3), vector_type=IntVector)
+            creator = HEAFACreator(
+                length=length, bounds=(0, 3), vector_type=IntVector
+            )
             mutation = CellExchangeMutation(probability=0.2)
 
     else:
@@ -103,10 +112,7 @@ def main():
     )
     operators_sequence = [crossover, mutation]
 
-    model_params = {
-        "input_size": creator.length,
-        "hidden_size": 100
-    }
+    model_params = {"input_size": creator.length, "hidden_size": 100}
 
     breeder = SimpleBreeder() if use_our_config else HEAFABreeder()
     selection = (

@@ -1,10 +1,11 @@
 from typing import List
 
 import numpy as np
-from eckity.individual import Individual
+import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
-from ..approx_ml_pop_eval import ApproxMLPopulationEvaluator
+from eckity.individual import Individual
+
 from .sampling_strat import SamplingStrategy
 
 
@@ -17,9 +18,9 @@ class CosSimSamplingStrategy(SamplingStrategy):
         individuals: List[Individual],
         sample_size: int,
         preds: np.ndarray,
-        evaluator: ApproxMLPopulationEvaluator,
+        population_dataset: pd.DataFrame,
     ):
-        X, _ = evaluator.get_X_y()
+        X = population_dataset.iloc[:, :-2].to_numpy()
         cosine_scores = self._get_cosine_scores(individuals, X)
         ind_scores = zip(individuals, cosine_scores)
 

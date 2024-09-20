@@ -43,6 +43,6 @@ class ELM(BaseEstimator):
         output_weights = H_pinv @ y
         self.output_weights = output_weights
 
-    def predict(self, X):
+    def predict(self, X: np.ndarray) -> np.ndarray:
         H = self._calculate_hidden_output(X)
         return np.dot(H, self.output_weights)
