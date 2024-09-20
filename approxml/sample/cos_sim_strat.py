@@ -1,11 +1,11 @@
-from sklearn.metrics.pairwise import cosine_similarity
-
 from typing import List
-from eckity.individual import Individual
-from approx_ml_pop_eval import ApproxMLPopulationEvaluator
 
 import numpy as np
-from sampling_strat import SamplingStrategy
+from eckity.individual import Individual
+from sklearn.metrics.pairwise import cosine_similarity
+
+from ..approx_ml_pop_eval import ApproxMLPopulationEvaluator
+from .sampling_strat import SamplingStrategy
 
 
 class CosSimSamplingStrategy(SamplingStrategy):
@@ -17,7 +17,7 @@ class CosSimSamplingStrategy(SamplingStrategy):
         individuals: List[Individual],
         sample_size: int,
         preds: np.ndarray,
-        evaluator: ApproxMLPopulationEvaluator
+        evaluator: ApproxMLPopulationEvaluator,
     ):
         X, _ = evaluator.get_X_y()
         cosine_scores = self._get_cosine_scores(individuals, X)
@@ -26,16 +26,13 @@ class CosSimSamplingStrategy(SamplingStrategy):
         # sample the individuals with the lowest cosine score
         # e.g. individuals that are least similar to the dataset
         sample_inds = [
-            ind for ind, _ in sorted(
-                ind_scores, key=lambda x: x[1]
-            )[:sample_size]
+            ind
+            for ind, _ in sorted(ind_scores, key=lambda x: x[1])[:sample_size]
         ]
         return sample_inds
 
     def _get_cosine_scores(
-        self,
-        individuals: List[Individual],
-        X: np.ndarray
+        self, individuals: List[Individual], X: np.ndarray
     ) -> List[float]:
         """
         Compute the cosine similarity between each individual and the dataset

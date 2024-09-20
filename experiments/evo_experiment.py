@@ -1,14 +1,13 @@
-import numpy as np
 import sys
 
+import numpy as np
+import utils
 from eckity.algorithms.simple_evolution import SimpleEvolution
 from eckity.breeders.simple_breeder import SimpleBreeder
-from eckity.subpopulation import Subpopulation
-from eckity.creators.ga_creators.int_vector_creator import GAIntVectorCreator
 from eckity.creators.ga_creators.bit_string_vector_creator import (
     GABitStringVectorCreator,
 )
-from eckity.genetic_operators.selections.tournament_selection import TournamentSelection
+from eckity.creators.ga_creators.int_vector_creator import GAIntVectorCreator
 from eckity.genetic_operators.crossovers.vector_k_point_crossover import (
     VectorKPointsCrossover,
 )
@@ -16,14 +15,17 @@ from eckity.genetic_operators.mutations.vector_random_mutation import (
     BitStringVectorNFlipMutation,
     IntVectorNPointMutation,
 )
-
-
+from eckity.genetic_operators.selections.tournament_selection import (
+    TournamentSelection,
+)
+from eckity.subpopulation import Subpopulation
 from plot_statistics import PlotStatistics
-import utils
 
-from blackjack_evaluator import BlackjackEvaluator
-from frozen_lake_evaluator import FrozenLakeEvaluator
-from monstercliff_evaluator import MonsterCliffWalkingEvaluator
+from problems.blackjack.blackjack_evaluator import BlackjackEvaluator
+from problems.frozen_lake.frozen_lake_evaluator import FrozenLakeEvaluator
+from problems.monster_cliff_walking.monstercliff_evaluator import (
+    MonsterCliffWalkingEvaluator,
+)
 
 
 def main():
@@ -41,7 +43,9 @@ def main():
         length = np.prod(utils.BLACKJACK_STATE_ACTION_SPACE_SHAPE)
         creator = GABitStringVectorCreator(length=length, bounds=(0, 1))
         ind_eval = BlackjackEvaluator(n_episodes=100_000)
-        mutation = BitStringVectorNFlipMutation(probability=0.3, n=length // 10)
+        mutation = BitStringVectorNFlipMutation(
+            probability=0.3, n=length // 10
+        )
         generations = 200
 
     elif problem == "frozenlake":
@@ -74,7 +78,12 @@ def main():
             ],
             selection_methods=[
                 # (selection method, selection probability) tuple
-                (TournamentSelection(tournament_size=4, higher_is_better=True), 1)
+                (
+                    TournamentSelection(
+                        tournament_size=4, higher_is_better=True
+                    ),
+                    1,
+                )
             ],
         ),
         breeder=SimpleBreeder(),

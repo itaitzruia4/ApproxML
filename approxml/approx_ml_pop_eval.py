@@ -1,20 +1,16 @@
-import random
+from typing import Any, Self
+
 import numpy as np
 import pandas as pd
-
-from sklearn.linear_model import Ridge
 from overrides import override
+from sklearn.base import RegressorMixin
+from sklearn.linear_model import Ridge
 
-from eckity.evaluators.simple_individual_evaluator import SimpleIndividualEvaluator
-from eckity.evaluators.population_evaluator import PopulationEvaluator
+from approxml.sample import RandomSamplingStrategy
+from eckity.evaluators import PopulationEvaluator, SimpleIndividualEvaluator
 from eckity.fitness.fitness import Fitness
 from eckity.individual import Individual
 from eckity.population import Population
-
-from sampling_strat import SamplingStrategy
-from random_strat import RandomSamplingStrategy
-
-from typing import List, Tuple
 
 
 class ApproxMLPopulationEvaluator(PopulationEvaluator):
@@ -23,17 +19,17 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
 
     Parameters
     ----------
-    should_approximate : callable, optional, default=None
+    should_approximate : Callable, optional, default=None
         Whether the fitness should be approximated in the current generation.
         If None, always approximate.
-    population_sample_size : int or float, optional, default=10
-        number (or percentage) of individuals to sample and compute their
-        fitness when approximating , by default 10%
-    sample_strategy : SamplingStrategy, optional, default=RandomSamplingStrategy
+    sample_rate : float, optional, default=0.1
+        percentage of individuals to sample and compute their
+        fitness when approximating
+    sample_strategy : SamplingStrategy, default=None
         strategy to use when sampling individuals for fitness approximation
     gen_sample_step : int, optional, default=1
         how many generations should pass between samples
-    model_type : sklearn model, optional, default=Ridge
+    model : RegressorMixin (sklearn model), optional, default=Ridge()
         model to use for fitness approximation
     model_params : dict, optional, default=None
         model parameters
@@ -48,12 +44,11 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
 
     def __init__(
         self,
-        should_approximate: callable = None,
-        population_sample_size=0.1,
+        should_approximate: callable[Self, bool] = None,
+        sample_rate=0.1,
         sampling_strategy=None,
         gen_sample_step=1,
-        model_type=Ridge,
-        model_params=None,
+        model: RegressorMixin = Ridge(),
         gen_weight=None,
         norm_func=None,
         inv_norm_func=None,
@@ -62,19 +57,17 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         job_id=None,
     ):
         super().__init__()
-        self.approx_fitness_error = float("inf")
-        self.population_sample_size = population_sample_size
+
+        if sampling_strategy is None:
+            raise ValueError("sampling_strategy cannot be None")
         self.sample_strategy = sampling_strategy
+
+        self.sample_rate = sample_rate
         self.gen_sample_step = gen_sample_step
         self.hide_fitness = hide_fitness
 
-        if model_params is None:
-            model_params = {}
-        self.model_params = model_params
-        self.model_type = model_type
-
         # ML model
-        self.model = self.model_type(**self.model_params)
+        self.model = model
 
         # generation counter
         self.gen = 0
@@ -88,7 +81,11 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
 
         # Always approximate by default
         if should_approximate is None:
-            should_approximate = lambda _: True
+
+            def default_should_approximate(eval):
+                return True
+
+            should_approximate = default_should_approximate
 
         self.should_approximate = should_approximate
         self.is_approx = False
@@ -153,8 +150,9 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
                 sub_population.individuals, sub_population.evaluator
             )
 
-            for ind, fitness_score in zip(sub_population.individuals,
-                                          fitnesses):
+            for ind, fitness_score in zip(
+                sub_population.individuals, fitnesses
+            ):
                 ind.fitness.set_fitness(fitness_score)
 
             best_of_gen_candidates = sub_population.individuals
@@ -181,8 +179,10 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         return best_ind
 
     def _approximate_individuals(
-        self, individuals: List[Individual], ind_eval: SimpleIndividualEvaluator
-    ) -> List[Individual]:
+        self,
+        individuals: list[Individual],
+        ind_eval: Self,
+    ) -> list[Individual]:
         # Obtain fitness score predictions from ML model
         preds = self.predict(individuals)
 
@@ -193,11 +193,7 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
 
         if self.gen > 0 and self.gen % self.gen_sample_step == 0:
             # Sample a subset of the population and compute their fitness
-            sample_size = (
-                self.population_sample_size
-                if isinstance(self.population_sample_size, int)
-                else int(len(individuals) * self.population_sample_size)
-            )
+            sample_size = round(len(individuals) * self.sample_rate)
 
             if sample_size > 0:
                 # Sample a subset of individuals from the population
@@ -208,7 +204,9 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
                     preds=preds,
                     evaluator=self,
                 )
-                fitness_scores = self._evaluate_individuals(sample_inds, ind_eval)
+                fitness_scores = self._evaluate_individuals(
+                    sample_inds, ind_eval
+                )
                 inds2scores.update(zip(sample_inds, fitness_scores))
 
                 # update population dataset with sampled individuals
@@ -230,7 +228,9 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
 
         return sample_inds
 
-    def _get_best_individual(self, individuals: List[Individual]) -> Individual:
+    def _get_best_individual(
+        self, individuals: list[Individual]
+    ) -> Individual:
         best_ind: Individual = individuals[0]
         best_fitness: Fitness = best_ind.fitness
 
@@ -241,8 +241,10 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         return best_ind
 
     def _evaluate_individuals(
-        self, individuals: List[Individual], ind_eval: SimpleIndividualEvaluator
-    ) -> List[float]:
+        self,
+        individuals: list[Individual],
+        ind_eval: SimpleIndividualEvaluator,
+    ) -> list[float]:
         """
         Evaluate the fitness scores of a given individuals list
 
@@ -257,11 +259,15 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
             list of fitness scores, by the order of the individuals
         """
 
-        eval_results = self.executor.map(ind_eval.evaluate_individual, individuals)
+        eval_results = self.executor.map(
+            ind_eval.evaluate_individual, individuals
+        )
         fitness_scores = list(eval_results)
         return fitness_scores
 
-    def _update_dataset(self, ind_vectors: List[List], fitnesses: List[float]):
+    def _update_dataset(
+        self, ind_vectors: list[list[int]], fitnesses: list[float]
+    ) -> None:
         df = pd.DataFrame(np.array(ind_vectors))
         df["fitness"] = np.array(fitnesses)
         df["gen"] = self.gen
@@ -281,7 +287,9 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
                 # If the same individual is evaluated multiple times,
                 # keep the first/last evaluation.
                 self.df.drop_duplicates(
-                    subset=range(n_features), keep=self.handle_duplicates, inplace=True
+                    subset=range(n_features),
+                    keep=self.handle_duplicates,
+                    inplace=True,
                 )
             else:
                 self.df.drop_duplicates(inplace=True)
@@ -307,7 +315,7 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         # retrain the model on the whole training set
         self.model.fit(X, y, sample_weight=w)
 
-    def predict(self, individuals: List[Individual]):
+    def predict(self, individuals: list[Individual]):
         """
         Perform fitness approximation of a given list of individuals.
 
@@ -326,12 +334,12 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         preds = self.inv_norm_func(preds)
         return preds
 
-    def get_X_y(self) -> Tuple[np.ndarray, np.ndarray]:
+    def get_X_y(self) -> tuple[np.ndarray, np.ndarray]:
         X, y = self.df.iloc[:, :-2].to_numpy(), self.df["fitness"].to_numpy()
         y = self.norm_func(y)
         return X, y
 
-    def get_fit_params(self):
+    def get_fit_params(self) -> dict[str, Any]:
         # Vector of generation number of each individual in the dataset
         #  (used for sample weights)
         w = (
@@ -341,7 +349,7 @@ class ApproxMLPopulationEvaluator(PopulationEvaluator):
         )
         return {"sample_weight": w}
 
-    def export_dataset(self, folder_path) -> None:
+    def export_dataset(self, folder_path: str) -> None:
         """
         Export the dataset used to train the model to a CSV file.
         """

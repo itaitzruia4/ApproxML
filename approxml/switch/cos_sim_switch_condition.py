@@ -1,11 +1,13 @@
-from approx_ml_pop_eval import ApproxMLPopulationEvaluator
 import numpy as np
-import utils
-
 from sklearn.metrics.pairwise import cosine_similarity
 
+from typing_extensions import override
+from approxml.approx_ml_pop_eval import ApproxMLPopulationEvaluator
 
-class CosSimSwitchCondition:
+from .switch_condition import SwitchCondition
+
+
+class CosSimSwitchCondition(SwitchCondition):
     """
     Switch condition based on the cosine similarity between the current
     generation and the population dataset.
@@ -20,17 +22,10 @@ class CosSimSwitchCondition:
         always return True afterwards
     """
 
-    def __init__(self, threshold=0.5, switch_once=False):
-        super().__init__()
-        self.threshold = threshold
+    def __init__(self, threshold: float = 0.5, switch_once: bool = False):
+        super().__init__(threshold=threshold, switch_once=switch_once)
 
-        self.switch_once = switch_once
-        if switch_once:
-            self.switched = False
-
-        # used for statistics
-        self.history = []
-
+    @override
     def should_approximate(self, evaluator: ApproxMLPopulationEvaluator):
         # If switch_once is enabled and the switch already occured,
         # always approximate

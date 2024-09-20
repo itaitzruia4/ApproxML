@@ -1,0 +1,2 @@
+eckity>=0.3.4
+gymnasium>=0.28.1
